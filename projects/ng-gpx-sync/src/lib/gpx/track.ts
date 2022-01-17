@@ -8,6 +8,7 @@ import { secondsToTime } from '../pipes/s-to-t';
 
 export class Track {
 
+  id: number = 0;
   fileName: string = 'untitled.gpx';
   name: string = 'untitled';
   eleGain: number = 0;
@@ -15,17 +16,21 @@ export class Track {
   duration: number = 0;
   durationDisplay: string = '00:00';
   distance: number = 0;
+  v: number = 0;
   track: TrackPoint[] = [];
 
   EARTH_RADIUS_IN_METERS = 6371000;
   toRad: (value: number) => number = (value: number) => value * Math.PI / 180;
 
-  // Analysis
+  timeFormat: string = 'mm:ss';
+
   slowPoints: TrackPoint[] = [];
 
   analyze(props: AnalysisProps): void {
+    this.slowPoints = [];
+
     for (let p of this.track) {
-      if (p.v > props.slowLimit) {
+      if (p.v > props.slowThreshold) {
         this.slowPoints.push(p);
       }
     }
@@ -61,9 +66,9 @@ export class Track {
 
     let p1: TrackPoint = new TrackPoint();
 
-    for (let i = 1; i < trkSeg[0].children.length; i++) {
-      let trkPt = trkSeg[0].children.item(i - 1);
-      let nextPt = trkSeg[0].children.item(i);
+    for (let i = 0; i < trkSeg[0].children.length - 2; i++) {
+      let trkPt = trkSeg[0].children.item(i);
+      let nextPt = trkSeg[0].children.item(i + 1);
       if (!trkPt || !nextPt) {
         break;
       }
@@ -77,6 +82,18 @@ export class Track {
       nextEle = nextPt.getElementsByTagName('ele')[0].textContent as unknown as number;
       nextTime = moment(nextPt.getElementsByTagName('time')[0].textContent);
 
+      while (lon === nextLon && lat === nextLat && i < trkSeg[0].children.length - 1) {
+        i++;
+        nextPt = trkSeg[0].children.item(i + 1);
+        nextLon = nextPt.getAttribute('lon') as unknown as number;
+        nextLat = nextPt.getAttribute('lat') as unknown as number;
+        nextEle = nextPt.getElementsByTagName('ele')[0].textContent as unknown as number;
+        nextTime = moment(nextPt.getElementsByTagName('time')[0].textContent);
+      }
+      if (lon === nextLon && lat === nextLat) {
+        break;
+      }
+
       eleDiff = nextEle - ele;
       if (eleDiff > 0) {
         this.eleGain += eleDiff;
@@ -86,40 +103,34 @@ export class Track {
       distance = this.calculateDistance(lon, lat, nextLon, nextLat);
       this.distance += distance;
 
-      if (i === 1) {
-        p1 = {
-          id: 0,
-          lon: lon,
-          lat: lat,
-          ele: ele,
-          date: time,
-          t: 0,
-          dx: 0,
-          dt: 0,
-          v: 0,
-          point: new Point([lon, lat])
-        };
-        this.track.push(p1);
+      if (distance > 0) {
+        this.track.push({
+          id: i,
+          lon: nextLon,
+          lat: nextLat,
+          ele: nextEle,
+          date: nextTime,
+          t: i === 0 ? 0 : nextTime.diff(p1.date, 's'),
+          dx: distance,
+          dt: nextTime.diff(time, 's'),
+          v: (nextTime.diff(time, 's') / 60.0) * (1.0 / distance) * 1000.0,
+          point: new Point([nextLon, nextLat])
+        });
+        if (i === 0) {
+          p1 = this.track[0];
+        }
+      } else {
+        console.warn('Zero distance between points!');
       }
-      this.track.push({
-        id: i,
-        lon: nextLon,
-        lat: nextLat,
-        ele: nextEle,
-        date: nextTime,
-        t: nextTime.diff(p1.date, 's'),
-        dx: distance,
-        dt: nextTime.diff(time, 's'),
-        v: (nextTime.diff(time, 's') / 60.0) * (1.0 / distance) * (1.0 / 0.000621371),
-        point: new Point([nextLon, nextLat])
-      });
     }
 
     const p2: TrackPoint = this.track[this.track.length - 1];
     const dt: number = p2.date.diff(p1.date, 's');
     this.duration = dt;
-    this.durationDisplay = secondsToTime(dt, dt > 3600 ? 'hhmmss' : 'mmss');
-    console.log(`Track: distance=${this.distance}, gain=${this.eleGain}, loss=${this.eleLoss}, v=${(dt / 60.0) * (1.0 / this.distance) * (1.0 / 0.000621371)}`)
+    this.timeFormat = dt > 3600 ? 'hhmmss' : 'mmss';
+    this.durationDisplay = secondsToTime(dt, this.timeFormat);
+    this.v = (dt / 60.0) * (1.0 / this.distance) * 1000.0;
+    //console.log(`Track: distance=${this.distance}, gain=${this.eleGain}, loss=${this.eleLoss}, v=${this.v}`)
   }
 
   writeGpx(): Document {
@@ -171,4 +182,8 @@ export class Track {
 
     return this.EARTH_RADIUS_IN_METERS * c;
   };
+
+  getNext(p: TrackPoint): TrackPoint {
+    return this.track.find((e: TrackPoint) => e.id === p.id);
+  }
 }

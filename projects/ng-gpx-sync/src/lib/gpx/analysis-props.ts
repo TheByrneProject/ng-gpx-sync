@@ -1,4 +1,4 @@
 
 export class AnalysisProps {
-  slowLimit: number = 11.0;
+  slowThreshold: number = 18.0;
 }
