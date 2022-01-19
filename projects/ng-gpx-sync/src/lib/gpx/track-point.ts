@@ -1,15 +1,23 @@
 import Point from 'ol/geom/Point';
-import moment, { Moment } from 'moment';
+import { TrackElement } from './track-element';
 
-export class TrackPoint {
+export class TrackPoint extends TrackElement {
   id: number = 0;
-  lon: number = 0;
-  lat: number = 0;
   point: Point = new Point([]);
-  date: Moment = moment();
   t: number = 0;
-  ele: number = 0;
   dx: number = 0;
   dt: number = 0;
   v: number = 0;
+
+  static createFromTrackElement(e: TrackElement, i: number): TrackPoint {
+    let p: TrackPoint = new TrackPoint();
+
+    p.id = i;
+    p.lon = e.lon;
+    p.lat = e.lat;
+    p.ele = e.ele;
+    p.date = e.date;
+    p.point = new Point([p.lon, p.lat]);
+    return p;
+  }
 }

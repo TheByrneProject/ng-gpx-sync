@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file source-language="en-US" datatype="plaintext" original="ng2.template">
+    <body>
+      <trans-unit id="8455204924704616723" datatype="html">
+        <source>File</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">projects/ng-gpx-sync/src/lib/gpx-sync.component.ts</context>
+          <context context-type="linenumber">88</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="7593555694782789615" datatype="html">
+        <source>Open</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">projects/ng-gpx-sync/src/lib/gpx-sync.component.ts</context>
+          <context context-type="linenumber">102</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="3813315596480512127" datatype="html">
+        <source>Save File</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">projects/ng-gpx-sync/src/lib/gpx-sync.component.ts</context>
+          <context context-type="linenumber">110</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="6555837556771030017" datatype="html">
+        <source>Save to Clipboard</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">projects/ng-gpx-sync/src/lib/gpx-sync.component.ts</context>
+          <context context-type="linenumber">124,125</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="9074327260054432941" datatype="html">
+        <source>Units</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">projects/ng-gpx-sync/src/lib/gpx-sync.component.ts</context>
+          <context context-type="linenumber">143,146</context>
+        </context-group>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

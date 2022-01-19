@@ -44,6 +44,12 @@
           "strict": true
         }
       },
+      "i18n": {
+        "sourceLocale": "en-US",
+        "locales": {
+          "fr": "projects/demo/src/i18n/messages.fr.xlf"
+        }
+      },
       "root": "projects/demo",
       "sourceRoot": "projects/demo/src",
       "prefix": "app",
@@ -97,6 +103,9 @@
               "extractLicenses": false,
               "sourceMap": true,
               "namedChunks": true
+            },
+            "fr": {
+              "localize": ["fr"]
             }
           },
           "defaultConfiguration": "production"
@@ -109,6 +118,9 @@
             },
             "development": {
               "browserTarget": "demo:build:development"
+            },
+            "fr": {
+              "browserTarget": "demo:build:fr"
             }
           },
           "defaultConfiguration": "development"

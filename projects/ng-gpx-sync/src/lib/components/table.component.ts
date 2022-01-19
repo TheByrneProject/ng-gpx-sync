@@ -1,43 +1,61 @@
 import { Component, OnInit } from '@angular/core';
+
 import { TrackPoint } from '../gpx/track-point';
 import { GpxSyncService } from '../gpx-sync.service';
 import { Track } from '../gpx/track';
 import { AnalysisProps } from '../gpx/analysis-props';
 import { Settings } from '../gpx/settings';
+import { TrackPointEvent } from '../event/track-point-event';
+import { ActionEvent } from '../event/action-event';
 
 @Component({
   selector: 'tbp-gpx-table-sync',
   template: `
-    <table mat-table [dataSource]="track.track" class="flex-grow-1">
-      <ng-container matColumnDef="time">
-        <th mat-header-cell *matHeaderCellDef>Time</th>
-        <td mat-cell *matCellDef="let element">{{element.t | stot : track.timeFormat}}</td>
-      </ng-container>
-      <ng-container matColumnDef="lat">
-        <th mat-header-cell *matHeaderCellDef>Lat</th>
-        <td mat-cell *matCellDef="let element">{{element.lat | number : '1.1-6'}}</td>
-      </ng-container>
-      <ng-container matColumnDef="lon">
-        <th mat-header-cell *matHeaderCellDef>Lon</th>
-        <td mat-cell *matCellDef="let element">{{element.lon | number : '1.1-6'}}</td>
-      </ng-container>
-      <ng-container matColumnDef="ele">
-        <th mat-header-cell *matHeaderCellDef>Elevation</th>
-        <td mat-cell *matCellDef="let element">{{settings.getElevation(element.ele) | number : '1.0'}}</td>
-      </ng-container>
-      <ng-container matColumnDef="pace">
-        <th mat-header-cell *matHeaderCellDef>Pace ({{settings.paceUnits}})</th>
-        <td mat-cell *matCellDef="let element">{{settings.getPaceDisplay(element.v)}}</td>
-      </ng-container>
+    <div class="w-100 h-100 y-auto me-3">
+      <table mat-table [dataSource]="track.track" class="flex-grow-1 w-100">
+        <ng-container matColumnDef="id">
+          <th mat-header-cell *matHeaderCellDef>ID</th>
+          <td mat-cell *matCellDef="let element">{{element.id}}</td>
+        </ng-container>
+        <ng-container matColumnDef="time">
+          <th mat-header-cell *matHeaderCellDef>Time</th>
+          <td mat-cell *matCellDef="let element">{{element.t | stot : track.timeFormat}}</td>
+        </ng-container>
+        <ng-container matColumnDef="lonlat">
+          <th mat-header-cell *matHeaderCellDef>Lon/Lat</th>
+          <td mat-cell *matCellDef="let element">{{element.lon | number : '1.1-6'}}, {{element.lat | number : '1.1-6'}}</td>
+        </ng-container>
+        <ng-container matColumnDef="ele">
+          <th mat-header-cell *matHeaderCellDef>Elevation ({{settings.eleUnits}})</th>
+          <td mat-cell *matCellDef="let element">{{settings.getElevation(element.ele) | number : '1.0-1'}}</td>
+        </ng-container>
+        <ng-container matColumnDef="pace">
+          <th mat-header-cell *matHeaderCellDef>Pace ({{settings.paceUnits}})</th>
+          <td mat-cell *matCellDef="let element">{{settings.getPaceDisplay(element.v)}}</td>
+        </ng-container>
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let element">
+            <div *ngIf="selectedPoint?.id !== element.id" style="width: 82px;"></div>
+            <ng-container *ngIf="selectedPoint?.id === element.id">
+              <button mat-raised-button color="primary" class="me-1" [matMenuTriggerFor]="actionMenu">Actions</button>
+              <mat-menu #actionMenu="matMenu">
+                <button mat-menu-item (click)="updateLatLon()">Update Point</button>
+                <button mat-menu-item (click)="changeDt()">Change dt</button>
+              </mat-menu>
+            </ng-container>
+          </td>
+        </ng-container>
 
-      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-      <tr mat-row
-          [id]="'table-p-' + row.id"
-          *matRowDef="let row; columns: displayedColumns;"
-          [class.selected]="selectedPoint?.id === row.id"
-          (click)="selectRow(row)"
-          style="background-color: {{getTrackPointBGColor(row)}}"></tr>
-    </table>
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row
+            [id]="'table-p-' + row.id"
+            *matRowDef="let row; columns: displayedColumns;"
+            [class.selected]="selectedPoint?.id === row.id"
+            (click)="selectRow(row)"
+            style="background-color: {{getTrackPointBGColor(row)}}"></tr>
+      </table>
+    </div>
   `,
   styles: [
     `
@@ -55,7 +73,7 @@ export class GpxSyncTableComponent implements OnInit {
 
   track: Track = new Track();
   data: TrackPoint[] = [];
-  displayedColumns: string[] = ['time', 'lat', 'lon', 'ele', 'pace'];
+  displayedColumns: string[] = ['id', 'time', 'lonlat', 'ele', 'pace', 'actions'];
   settings: Settings = new Settings();
   analysisProps: AnalysisProps = new AnalysisProps();
 
@@ -80,11 +98,11 @@ export class GpxSyncTableComponent implements OnInit {
       this.data = track.track;
     });
 
-    this.gpxSyncService.selectedPoint$.subscribe((p: TrackPoint) => {
-      if (p?.id !== this.selectedPoint?.id) {
-        this.scrollTo(p);
+    this.gpxSyncService.selectedPoint$.subscribe((e: TrackPointEvent) => {
+      if (e.source !== 'table') {
+        this.scrollTo(e.p);
       }
-      this.selectedPoint = p;
+      this.selectedPoint = e.p;
     });
   }
 
@@ -104,13 +122,28 @@ export class GpxSyncTableComponent implements OnInit {
 
   selectRow(p: TrackPoint): void {
     console.log('selectRow: ' + p.id);
-    this.selectedPoint = p;
-    this.gpxSyncService.selectedPoint$.next(p);
+    this.gpxSyncService.selectedPoint$.next(new TrackPointEvent(p, 'table'));
   }
 
   scrollTo(p: TrackPoint): void {
     if (p) {
       document.getElementById('table-p-' + p.id).scrollIntoView();
+    }
+  }
+
+  changeDt(): void {
+    if (this.selectedPoint) {
+      this.gpxSyncService.action$.next(new ActionEvent('change-dt', this.selectedPoint));
+    } else {
+      this.gpxSyncService.openSnackBar('No point selected!');
+    }
+  }
+
+  updateLatLon(): void {
+    if (this.selectedPoint) {
+      this.gpxSyncService.action$.next(new ActionEvent('update-point', this.selectedPoint));
+    } else {
+      this.gpxSyncService.openSnackBar('No point selected!');
     }
   }
 }

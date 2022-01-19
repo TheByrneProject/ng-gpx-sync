@@ -1,12 +1,15 @@
 
 import Point from 'ol/geom/Point';
 import { TrackPoint } from './track-point';
-import { Moment } from 'moment';
-import moment from 'moment';
 import { AnalysisProps } from './analysis-props';
 import { secondsToTime } from '../pipes/s-to-t';
+import { calcDistance, calcPace } from './calc';
+import { TrackElement } from './track-element';
+import { GpxEvent } from '../event/gpx-event';
 
 export class Track {
+
+  track: TrackPoint[] = [];
 
   id: number = 0;
   fileName: string = 'untitled.gpx';
@@ -17,14 +20,22 @@ export class Track {
   durationDisplay: string = '00:00';
   distance: number = 0;
   v: number = 0;
-  track: TrackPoint[] = [];
-
-  EARTH_RADIUS_IN_METERS = 6371000;
-  toRad: (value: number) => number = (value: number) => value * Math.PI / 180;
 
   timeFormat: string = 'mm:ss';
 
   slowPoints: TrackPoint[] = [];
+
+  droppedPoints: number = 0;
+
+  static from(old: Track): Track {
+    let track: Track = new Track();
+    track = Object.assign(track, old);
+    for (let i = 0; i < old.track.length; i++) {
+      track.track[i] = Object.assign(new TrackPoint(), old.track[i]);
+      track.track[i].point = Object.assign(new Point([0, 0]), old.track[i].point);
+    }
+    return track;
+  }
 
   analyze(props: AnalysisProps): void {
     this.slowPoints = [];
@@ -41,6 +52,7 @@ export class Track {
   }
 
   parseGpx(gpx: Document): void {
+    this.droppedPoints = 0;
     this.track = [];
 
     try {
@@ -48,23 +60,10 @@ export class Track {
     } catch (error) {}
 
     let trkSeg = gpx.getElementsByTagName('trkseg');
-    let child = trkSeg[0].children[0];
-    let lon: number = child.getAttribute('lon') as unknown as number;
-    let lat: number = child.getAttribute('lat') as unknown as number;
-    let nextLon: number;
-    let nextLat: number;
-    let ele: number;
-    let nextEle: number;
-    let eleDiff: number;
-    let distance: number;
-    let time: Moment;
-    let nextTime: Moment;
+    let e1: TrackElement;
+    let e2: TrackElement;
 
-    this.eleGain = 0;
-    this.eleLoss = 0;
-    this.distance = 0;
-
-    let p1: TrackPoint = new TrackPoint();
+    let startPoint: TrackPoint = new TrackPoint();
 
     for (let i = 0; i < trkSeg[0].children.length - 2; i++) {
       let trkPt = trkSeg[0].children.item(i);
@@ -73,64 +72,71 @@ export class Track {
         break;
       }
 
-      lon = trkPt.getAttribute('lon') as unknown as number;
-      lat = trkPt.getAttribute('lat') as unknown as number;
-      ele = trkPt.getElementsByTagName('ele')[0].textContent as unknown as number;
-      time = moment(trkPt.getElementsByTagName('time')[0].textContent);
-      nextLon = nextPt.getAttribute('lon') as unknown as number;
-      nextLat = nextPt.getAttribute('lat') as unknown as number;
-      nextEle = nextPt.getElementsByTagName('ele')[0].textContent as unknown as number;
-      nextTime = moment(nextPt.getElementsByTagName('time')[0].textContent);
+      e1 = TrackElement.createFromElement(trkPt);
+      e2 = TrackElement.createFromElement(nextPt);
 
-      while (lon === nextLon && lat === nextLat && i < trkSeg[0].children.length - 1) {
+      while (e1.lon === e2.lon && e1.lat === e2.lat && i < trkSeg[0].children.length - 1) {
+        this.droppedPoints++;
         i++;
-        nextPt = trkSeg[0].children.item(i + 1);
-        nextLon = nextPt.getAttribute('lon') as unknown as number;
-        nextLat = nextPt.getAttribute('lat') as unknown as number;
-        nextEle = nextPt.getElementsByTagName('ele')[0].textContent as unknown as number;
-        nextTime = moment(nextPt.getElementsByTagName('time')[0].textContent);
+        e2 = TrackElement.createFromElement(trkSeg[0].children.item(i + 1));
       }
-      if (lon === nextLon && lat === nextLat) {
+      if (e1.lon === e2.lon && e1.lat === e2.lat) {
+        this.droppedPoints++;
         break;
       }
 
-      eleDiff = nextEle - ele;
-      if (eleDiff > 0) {
-        this.eleGain += eleDiff;
-      } else if (eleDiff < 0) {
-        this.eleLoss += eleDiff;
-      }
-      distance = this.calculateDistance(lon, lat, nextLon, nextLat);
-      this.distance += distance;
-
-      if (distance > 0) {
-        this.track.push({
-          id: i,
-          lon: nextLon,
-          lat: nextLat,
-          ele: nextEle,
-          date: nextTime,
-          t: i === 0 ? 0 : nextTime.diff(p1.date, 's'),
-          dx: distance,
-          dt: nextTime.diff(time, 's'),
-          v: (nextTime.diff(time, 's') / 60.0) * (1.0 / distance) * 1000.0,
-          point: new Point([nextLon, nextLat])
-        });
-        if (i === 0) {
-          p1 = this.track[0];
-        }
-      } else {
-        console.warn('Zero distance between points!');
+      this.track.push(TrackPoint.createFromTrackElement(e1, i));
+      if (i === 0) {
+        startPoint = this.track[0];
       }
     }
 
-    const p2: TrackPoint = this.track[this.track.length - 1];
-    const dt: number = p2.date.diff(p1.date, 's');
-    this.duration = dt;
-    this.timeFormat = dt > 3600 ? 'hhmmss' : 'mmss';
-    this.durationDisplay = secondsToTime(dt, this.timeFormat);
-    this.v = (dt / 60.0) * (1.0 / this.distance) * 1000.0;
-    //console.log(`Track: distance=${this.distance}, gain=${this.eleGain}, loss=${this.eleLoss}, v=${this.v}`)
+    // Last Point
+    e1 = TrackElement.createFromElement(trkSeg[0].children.item(trkSeg[0].children.length - 1));
+    this.track.push(TrackPoint.createFromTrackElement(e1, trkSeg[0].children.length - 1));
+
+    this.calcTrack();
+  }
+
+  /**
+   * With the date, lat, lon and ele set, do the basic calculations per track point.
+   */
+  calcTrack(): void {
+    let p0: TrackPoint = this.track[0];
+    let p1: TrackPoint;
+    let p2: TrackPoint;
+    let dx: number;
+    let dt: number;
+    let de: number;
+
+    this.eleGain = 0;
+    this.eleLoss = 0;
+    this.distance = 0;
+
+    for (let i = 0; i < this.track.length - 2; i++) {
+      p1 = this.track[i];
+      p2 = this.track[i + 1];
+
+      de = p2.ele - p1.ele;
+      if (de > 0) {
+        this.eleGain += de;
+      } else if (de < 0) {
+        this.eleLoss += de;
+      }
+      dx = calcDistance(p1.lon, p1.lat, p2.lon, p2.lat);
+      this.distance += dx;
+      dt = p2.date.diff(p1.date, 's');
+
+      p1.t = i === 0 ? 0 : p1.date.diff(p0.date, 's');
+      p1.dx = dx;
+      p1.dt = dt;
+      p1.v = calcPace(dt, dx);
+    }
+
+    // The last point of the track has a zero delta for time and distance.
+    this.track[this.track.length - 1].t = this.track[this.track.length - 1].date.diff(p0.date, 's')
+
+    this.setDuration(this.track[this.track.length - 1].date.diff(p0.date, 's'));
   }
 
   writeGpx(): Document {
@@ -139,7 +145,7 @@ export class Track {
     let gpx: Element = gpxFile.createElement('gpx');
     gpx.setAttribute('xmlns', 'http://www.topografix.com/GPX/1/1');
     gpx.setAttribute('xmlns:gpxx', 'http://www.garmin.com/xmlschemas/GpxExtensions/v3');
-    gpx.setAttribute('creator', 'TheByrneProject');
+    gpx.setAttribute('creator', 'thebyrneproject.com');
     gpx.setAttribute('version', '1.1');
 
     let trk: Element = gpxFile.createElement('trk');
@@ -168,22 +174,83 @@ export class Track {
     return gpxFile;
   }
 
-  calculateDistance(lon1: number, lat1: number, lon2: number, lat2: number): number {
-    const dLat = this.toRad(lat2 - lat1);
-    const dLon = this.toRad(lon2 - lon1);
+  setDuration(duration: number): void {
+    this.duration = duration;
+    this.timeFormat = this.duration > 3600 ? 'hhmmss' : 'mmss';
+    this.durationDisplay = secondsToTime(this.duration, this.timeFormat);
+    this.v = (this.duration / 60.0) * (1.0 / this.distance) * 1000.0;
+  }
 
-    const startLat = this.toRad(lat1);
-    const endLat = this.toRad(lat2);
-
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.sin(dLon/2) * Math.sin(dLon/2) * Math.cos(startLat) * Math.cos(endLat);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return this.EARTH_RADIUS_IN_METERS * c;
-  };
+  getPrevious(p: TrackPoint): TrackPoint {
+    const i: number = this.track.findIndex((e: TrackPoint) => e.id === p.id);
+    return i === 0 ? undefined : this.track[i - 1];
+  }
 
   getNext(p: TrackPoint): TrackPoint {
-    return this.track.find((e: TrackPoint) => e.id === p.id);
+    const i: number = this.track.findIndex((e: TrackPoint) => e.id === p.id);
+    return i === this.track.length - 1 ? undefined : this.track[i + 1];
+  }
+
+  /**
+   * Shift time starting from the point after p.
+   *
+   * @param p
+   * @param dt Either positive or negative.
+   */
+  shiftTime(p1: TrackPoint, dt: number): void {
+    let process: boolean = false;
+
+    this.setDuration(this.duration += dt);
+
+    for (let i = 0; i < this.track.length; i++) {
+      if (process) {
+        this.track[i].t += dt;
+        this.track[i].date = this.track[i].date.add(dt, 's');
+      } else if (p1.id === this.track[i].id) {
+        process = true;
+        this.track[i].dt += dt;
+        this.track[i].v = calcPace(this.track[i].dt, this.track[i].dx);
+      }
+    }
+  }
+
+  compress(newDuration: number): boolean {
+    if (this.duration < newDuration) {
+      return false;
+    }
+
+    let p: TrackPoint;
+
+    while (newDuration < this.duration) {
+      p = undefined;
+      for (let i = 0; i < this.track.length - 1; i++) {
+        if (this.track[i].dt === 1) {
+          continue;
+        }
+        if (!p) {
+          p = this.track[i];
+        } else if (p.v < this.track[i].v) {
+          p = this.track[i];
+        }
+      }
+      this.shiftTime(p, -1);
+    }
+
+    return true;
+  }
+
+  updatePoint(u: TrackPoint): GpxEvent {
+    try {
+      let p: TrackPoint = this.track.find((o: TrackPoint) => o.id === u.id);
+      p.lat = u.lat;
+      p.lon = u.lon;
+      p.ele = u.ele;
+      p.point = new Point([u.lon, u.lat]);
+      this.calcTrack();
+    } catch (error) {
+      return GpxEvent.createEvent('Update Point failed', false, error);
+    }
+
+    return GpxEvent.createEvent(`Updated point id=${u.id} at time=${u.t}`);
   }
 }

@@ -1,26 +1,28 @@
-import { Component, HostListener, OnInit } from '@angular/core';
-import { Circle, Fill, Stroke, Style } from 'ol/style';
+import { Component, HostListener, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
+
 import Map from 'ol/Map';
 import View from 'ol/View';
-import * as olProj from 'ol/proj';
-import * as source from 'ol/source';
 import VectorLayer from 'ol/layer/Vector';
 import TileLayer from 'ol/layer/Tile';
-import { OSM } from 'ol/source';
+import Projection from 'ol/proj/Projection';
+import Feature from 'ol/Feature';
+import MapBrowserEvent from 'ol/MapBrowserEvent';
+import { fromLonLat, toLonLat } from 'ol/proj';
+import { circular } from 'ol/geom/Polygon';
+import { OSM, Vector } from 'ol/source';
+import { LineString } from 'ol/geom';
+import { Circle, Fill, Stroke, Style } from 'ol/style';
+
+import { Track } from '../gpx/track';
 import { GpxSyncService } from '../gpx-sync.service';
 import { TrackPoint } from '../gpx/track-point';
-import { GeometryCollection, LineString, Polygon } from 'ol/geom';
-import Projection from 'ol/proj/Projection';
-import { Feature } from 'ol';
-import { Track } from '../gpx/track';
-import MapBrowserEvent from 'ol/MapBrowserEvent';
-import { toLonLat } from 'ol/proj';
-import { circular } from 'ol/geom/Polygon';
+import { TrackElement } from '../gpx/track-element';
+import { TrackPointEvent } from '../event/track-point-event';
 
 @Component({
   selector: 'tbp-gpx-openlayers-sync',
   template: `
-    <div id="map" class="w-100 h-100"></div>
+    <div [id]="target" class="w-100 h-100"></div>
   `,
   styles: [`
     ::ng-deep .ol-viewport {
@@ -28,7 +30,7 @@ import { circular } from 'ol/geom/Polygon';
     }
   `]
 })
-export class GpxSyncOpenLayersComponent implements OnInit {
+export class GpxSyncOpenLayersComponent implements OnChanges, OnInit {
 
   fill = new Fill({
     color: [180, 0, 0, 0.15]
@@ -60,12 +62,12 @@ export class GpxSyncOpenLayersComponent implements OnInit {
   });
 
   map: Map = new Map({});
-  vectorSource = new source.Vector({});
+  vectorSource = new Vector({});
   vector: VectorLayer = new VectorLayer({
     source: this.vectorSource,
     style: this.style
   });
-  overlaySource = new source.Vector({});
+  overlaySource = new Vector({});
   overlay: VectorLayer = new VectorLayer({
     source: this.overlaySource,
     style: this.overlayStyle
@@ -76,40 +78,52 @@ export class GpxSyncOpenLayersComponent implements OnInit {
 
   track: TrackPoint[] = [];
 
+  @Input()
+  target: string = 'map';
+
   constructor(private gpxSyncService: GpxSyncService) {}
 
   ngOnInit(): void {
-    this.initMap();
-
     this.gpxSyncService.track$.subscribe((track: Track) => {
       if (track.track.length > 0) {
         this.loadTrack(track.track);
       }
     });
-    this.gpxSyncService.selectedPoint$.subscribe((p: TrackPoint | undefined) => {
-      if (p) {
-        this.selectPoint(p);
+    this.gpxSyncService.selectedPoint$.subscribe((e: TrackPointEvent) => {
+      if (e.p) {
+        this.selectPoint(e.p);
       }
     });
   }
 
   ngAfterViewInit(): void {
+    this.initMap();
+    this.map.setTarget(this.target);
+    this.map.updateSize();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    this.map.setTarget(this.target);
     this.map.updateSize();
   }
 
   @HostListener('window:resize', ['$event'])
   onResize(event: Event) {
+    this.map.setTarget(this.target);
     this.map.updateSize();
   }
 
   selectPoint(p: TrackPoint): void {
+    if (!p) {
+      return;
+    }
+
     console.log('map.selectPoint: ' + p.id);
 
     const projection = this.map.getView().getProjection();
     this.overlaySource.clear();
     let feature = new Feature({});
     const circle = circular(p.point.getCoordinates(), 50, 24);
-    //circle.transform('EPSG:4326', projection);
     feature.setGeometry(circle);
     this.overlaySource.addFeature(feature);
 
@@ -124,21 +138,21 @@ export class GpxSyncOpenLayersComponent implements OnInit {
 
   private initMap(): void {
     this.map = new Map({
-      target: 'map',
+      target: this.target,
       layers: [
         this.tileLayer,
         this.vector,
         this.overlay
       ],
       view: new View({
-        center: olProj.fromLonLat([0, 0]),
+        center: fromLonLat([0, 0]),
         zoom: 14
       })
     });
 
     this.map.on('singleclick', (event: MapBrowserEvent<UIEvent>) => {
       console.log('singleClick: ' + toLonLat(event.coordinate));
-      this.gpxSyncService.clickPoint$.next(toLonLat(event.coordinate));
+      this.gpxSyncService.setClickPoint(TrackElement.createFromCoordinate(toLonLat(event.coordinate)));
     });
     this.map.on('dblclick', (event: MapBrowserEvent<UIEvent>) => {
       this.map.getView().fit(this.vector.getSource().getExtent(), {size: this.map.getSize(), padding: [25, 25, 25, 25]});

@@ -1,26 +1,29 @@
 import { Component, HostBinding, Input } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { MatDialog } from '@angular/material/dialog';
+import { Clipboard } from '@angular/cdk/clipboard';
 
 import { FileSaverService } from 'ngx-filesaver';
 
 import { GpxSyncService } from './gpx-sync.service';
 import { Track } from './gpx/track';
-import { Undo } from './events/undo';
-import { HttpClient } from '@angular/common/http';
-import { MatDialog } from '@angular/material/dialog';
+import { Undo } from './event/undo';
 import { UserGuideComponent } from './dialog/user-guide.component';
 import { AboutComponent } from './dialog/about.component';
 import { Settings } from './gpx/settings';
+import { ActionEvent } from './event/action-event';
 
 @Component({
   selector: 'tbp-gpx-sync',
   template: `
-    <div class="form-group d-flex flex-grow-1 m-1">
+    <div class="form-group d-flex flex-grow-0 m-1">
       <!-- File -->
-      <button mat-raised-button color="primary" class="me-1" [matMenuTriggerFor]="fileMenu">File</button>
+      <button mat-raised-button color="primary" class="me-1" [matMenuTriggerFor]="fileMenu" i18n>File</button>
       <mat-menu #fileMenu="matMenu">
-        <button mat-menu-item (click)="open()">Open</button>
-        <button mat-menu-item (click)="save()">Save</button>
-        <button mat-menu-item [matMenuTriggerFor]="unitsMenu">Units</button>
+        <button mat-menu-item (click)="open()" i18n>Open</button>
+        <button mat-menu-item (click)="save(true)" i18n>Save File</button>
+        <button mat-menu-item (click)="save(false)" i18n>Save to Clipboard</button>
+        <button mat-menu-item [matMenuTriggerFor]="unitsMenu" i18n>Units</button>
       </mat-menu>
       <mat-menu #unitsMenu="matMenu">
         <button mat-menu-item (click)="setMetric(true)">Metric<mat-icon *ngIf="settings?.metric" class="ms-3">check</mat-icon></button>
@@ -45,42 +48,46 @@ import { Settings } from './gpx/settings';
         <mat-icon class="ms-2 me-2" (click)="doRedo()" [class.inactive]="undo.index === 0">redo</mat-icon>
       </div>
     </div>
-    <div id="top-panel" class="d-flex">
-      <tbp-gpx-openlayers-sync id="openlayers" class="d-flex w-50 h-100 r-border m-1 p-1"></tbp-gpx-openlayers-sync>
-      <mat-tab-group class="w-50 h-100 r-border m-1 p-1">
-        <mat-tab label="Info"><tbp-gpx-info-sync></tbp-gpx-info-sync></mat-tab>
-        <mat-tab label="Map"><tbp-gpx-map-sync></tbp-gpx-map-sync></mat-tab>
-        <mat-tab label="Analysis"><tbp-gpx-analysis-sync></tbp-gpx-analysis-sync></mat-tab>
-      </mat-tab-group>
+
+    <!-- xl -->
+    <div class="d-none d-xl-flex flex-column flex-grow-1 overflow-hidden">
+      <div class="panel">
+        <tbp-gpx-openlayers-sync id="openlayers" target="xl-map" class="sub-panel"></tbp-gpx-openlayers-sync>
+        <mat-tab-group class="sub-panel">
+          <mat-tab label="Info"><tbp-gpx-info-sync></tbp-gpx-info-sync></mat-tab>
+          <mat-tab label="Slow Analysis"><tbp-gpx-analysis-sync></tbp-gpx-analysis-sync></mat-tab>
+        </mat-tab-group>
+      </div>
+      <div class="d-flex flex-grow-1 panel">
+        <tbp-gpx-table-sync id="table" class="sub-panel"></tbp-gpx-table-sync>
+        <tbp-gpx-sync-action id="actions" flasher class="sub-panel"></tbp-gpx-sync-action>
+      </div>
     </div>
-    <tbp-gpx-table-sync id="table" class="d-flex r-border mt-2 m-1 p-1"></tbp-gpx-table-sync>
+
+    <!-- less than xl -->
+    <mat-tab-group class="d-flex d-xl-none flex-grow-1 h-100">
+      <mat-tab label="Map">
+        <tbp-gpx-openlayers-sync id="openlayers" class="d-flex flex-grow-1 h-100 p-1"></tbp-gpx-openlayers-sync>
+      </mat-tab>
+      <mat-tab label="Info/Analysis">
+        <mat-tab-group class="d-flex flex-grow-1 h-100 p-1">
+          <mat-tab label="Info"><tbp-gpx-info-sync></tbp-gpx-info-sync></mat-tab>
+          <!--<mat-tab label="Map"><tbp-gpx-map-sync></tbp-gpx-map-sync></mat-tab>-->
+          <mat-tab label="Slow Analysis"><tbp-gpx-analysis-sync></tbp-gpx-analysis-sync></mat-tab>
+        </mat-tab-group>
+      </mat-tab>
+      <mat-tab label="Table">
+        <tbp-gpx-table-sync id="table" class="d-flex flex-grow-1 h-100 p-1"></tbp-gpx-table-sync>
+      </mat-tab>
+      <mat-tab label="Actions">
+        <tbp-gpx-sync-action id="actions" flasher class="d-flex flex-grow-1 h-100 p-1"></tbp-gpx-sync-action>
+      </mat-tab>
+    </mat-tab-group>
 
     <input type="file" id="file-upload" (change)="openGpx($event)" style="display: none;">
   `,
-  styles: [
-    `
-      .inactive {
-        color: grey;
-      }
-
-      #top-panel {
-        height: 49%;
-      }
-
-      #table {
-        height: 49%;
-        overflow-y: auto;
-      }
-
-      .r-border {
-        border-radius: 1rem;
-        border: 1px solid grey;
-      }
-
-      ::ng-deep .mat-row.selected {
-        background-color: yellow;
-      }
-    `
+  styleUrls: [
+    'gpx-sync.component.scss'
   ]
 })
 export class GpxSyncComponent {
@@ -96,6 +103,7 @@ export class GpxSyncComponent {
   constructor(private gpxSyncService: GpxSyncService,
               public dialog: MatDialog,
               private http: HttpClient,
+              private clipboard: Clipboard,
               private fileSaverService: FileSaverService) { }
 
   ngOnInit(): void {
@@ -104,6 +112,9 @@ export class GpxSyncComponent {
     });
     this.gpxSyncService.settings$.subscribe((settings: Settings) => {
       this.settings = settings;
+    });
+    this.gpxSyncService.track$.subscribe((track: Track) => {
+      this.track = track;
     });
 
     if (this.localData) {
@@ -117,9 +128,13 @@ export class GpxSyncComponent {
     (document.getElementById('file-upload') as HTMLButtonElement).click();
   }
 
-  save(): void {
-    const blob = new Blob([new XMLSerializer().serializeToString(this.track.writeGpx())], { type: 'text/xml'});
-    this.fileSaverService.save(blob, this.track.fileName);
+  save(file: boolean): void {
+    if (file) {
+      const blob = new Blob([new XMLSerializer().serializeToString(this.track.writeGpx())], { type: 'text/xml'});
+      this.fileSaverService.save(blob, this.track.fileName);
+    } else {
+      this.clipboard.copy(new XMLSerializer().serializeToString(this.track.writeGpx()));
+    }
   }
 
   openGpx(event: any): void {
@@ -140,22 +155,33 @@ export class GpxSyncComponent {
     this.gpxSyncService.setMetric(metric);
   }
 
-  doUndo(): void {}
+  doUndo(): void {
+    this.gpxSyncService.undo();
+  }
 
-  doRedo(): void {}
+  doRedo(): void {
+    this.gpxSyncService.redo();
+  }
 
   compress() {
-    const dialogRef = this.dialog.open(UserGuideComponent);
-    dialogRef.afterClosed().subscribe();
+    /*const dialogRef = this.dialog.open(CompressComponent, {
+      minWidth: '50vw'
+    });
+    dialogRef.afterClosed().subscribe();*/
+    this.gpxSyncService.action$.next(new ActionEvent('compress'));
   }
 
   about() {
-    const dialogRef = this.dialog.open(AboutComponent);
+    const dialogRef = this.dialog.open(AboutComponent, {
+      minWidth: '50vw'
+    });
     dialogRef.afterClosed().subscribe();
   }
 
   userGuide() {
-    const dialogRef = this.dialog.open(UserGuideComponent);
+    const dialogRef = this.dialog.open(UserGuideComponent, {
+      minWidth: '50vw'
+    });
     dialogRef.afterClosed().subscribe();
   }
 }

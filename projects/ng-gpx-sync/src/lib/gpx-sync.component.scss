@@ -1,0 +1,75 @@
+
+.y-auto {
+
+}
+
+.inactive {
+  color: grey;
+}
+
+.panel {
+  display: flex;
+  height: 50%;
+  justify-content: space-evenly;
+
+  .sub-panel {
+    margin: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 1rem;
+    border: 1px solid grey;
+    width: 100%;
+    flex: 1 1 auto;
+  }
+}
+
+::ng-deep .y-auto {
+  overflow-y: auto;
+}
+
+::ng-deep .mat-tab-body-wrapper {
+  height: 100%;
+}
+
+::ng-deep .mat-row.selected {
+  background-color: yellow;
+}
+
+::ng-deep .card-values {
+  display: flex !important;
+  flex-direction: column;
+  div.card-row {
+    display: flex;
+    padding: 0.25rem;
+
+    div.label {
+      font-size: larger;
+    }
+  }
+}
+
+::ng-deep .label {
+  font-size: larger;
+}
+
+::ng-deep .w-100px {
+  width: 100px;
+}
+
+::ng-deep .action-title {
+  font-size: x-large;
+  padding: 0rem 0.5rem;
+  font-weight: 500;
+}
+
+::ng-deep .flash {
+  animation: blinker 0.5s linear 1;
+}
+
+@keyframes blinker {
+  0%, 100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgba(0, 0, 255, 0.5);
+  }
+}
